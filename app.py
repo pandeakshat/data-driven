@@ -5,13 +5,13 @@ import plotly.express as px
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
-    page_title="The Alchemist | Personal OS",
+    page_title="Data Driven Life",
     page_icon="⚡",
     layout="wide"
 )
 
 # --- HEADER ---
-st.title("⚡ The Alchemist")
+st.title("Data Driven Life")
 st.markdown("*Transforming raw logs into personal insights.*")
 st.markdown("---")
 
@@ -64,21 +64,25 @@ except Exception as e:
     st.error(f"Date Parsing Error: {e}. Please ensure your 'Date' column is clean.")
     st.stop()
 
-# 2. Machine Learning: Sentiment Analysis (The "Alchemist" Touch)
+# 2. Machine Learning: Sentiment Analysis
 def get_sentiment(text):
     if pd.isna(text) or str(text).strip() == "":
         return 0
-    # Returns a score between -1.0 (Negative) and 1.0 (Positive)
     return TextBlob(str(text)).sentiment.polarity
 
+# Smart Column Detection
+text_column = None
 if 'Journal' in df.columns:
-    df['Sentiment_Score'] = df['Journal'].apply(get_sentiment)
-    # Create a smoothed trend line (7-day rolling average)
+    text_column = 'Journal'
+elif 'Daily_Win' in df.columns:
+    text_column = 'Daily_Win' # Fallback to analyzing wins if journal is missing
+
+if text_column:
+    df['Sentiment_Score'] = df[text_column].apply(get_sentiment)
     df['Sentiment_Trend'] = df['Sentiment_Score'].rolling(window=7, min_periods=1).mean()
 else:
-    # Fallback if no journal exists
     df['Sentiment_Score'] = 0
-    df['Sentiment_Trend'] = 0
+
 
 # --- 3. MODEL & DEPLOY LAYER (The Dashboard) ---
 
@@ -88,7 +92,8 @@ st.sidebar.header("2. Configuration")
 days_to_show = st.sidebar.slider("Lookback Window (Days)", 7, 90, 30)
 
 # Filter Data
-filtered_df = df.tail(days_to_show)
+# FIX: Added .copy() here to prevent SettingWithCopyWarning
+filtered_df = df.tail(days_to_show).copy()
 
 # KPI SCOREBOARD
 col1, col2, col3, col4 = st.columns(4)
@@ -119,8 +124,8 @@ with c2:
     
     # 1. Handle Subjective Mood (Map text to numbers if needed)
     if 'Mood' in filtered_df.columns and 'Mood_Score' not in filtered_df.columns:
-         mood_map = {'Great': 5, 'Good': 4, 'Neutral': 3, 'Bad': 2, 'Terrible': 1}
-         filtered_df['Mood_Score'] = filtered_df['Mood'].map(mood_map)
+          mood_map = {'Great': 5, 'Good': 4, 'Neutral': 3, 'Bad': 2, 'Terrible': 1}
+          filtered_df['Mood_Score'] = filtered_df['Mood'].map(mood_map)
     
     # 2. Normalize Mood to fit -1 to 1 scale (to match Sentiment Analysis)
     if 'Mood_Score' in filtered_df.columns:
@@ -135,10 +140,19 @@ with st.expander("Show Correlation Heatmap (The Logic Layer)"):
     st.write("What variables actually move together?")
     # Select only numeric columns
     numeric_df = filtered_df.select_dtypes(include=['float64', 'int64'])
+    
     if not numeric_df.empty:
         corr = numeric_df.corr()
-        # Use a gradient to show strong correlations
-        st.dataframe(corr.style.background_gradient(cmap="coolwarm"))
+        
+        # FIX: Replaced Pandas Styler (which needs matplotlib) with Plotly Express
+        fig_corr = px.imshow(
+            corr, 
+            text_auto=True, 
+            color_continuous_scale='RdBu_r', 
+            aspect="auto",
+            title="Correlation Matrix"
+        )
+        st.plotly_chart(fig_corr, use_container_width=True)
     else:
         st.write("Not enough numeric data.")
 
